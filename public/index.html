@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Leaflet + Turf + Batch Point Check</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"
+    />
+    <style>
+      #map {
+        height: 90vh;
+      }
+      button {
+        margin: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <button onclick="sendCheck()">Check 100 Points</button>
+    <div id="status"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script>
+      const map = L.map("map").setView([-6.2, 106.8], 10);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(
+        map
+      );
+
+      const drawnItems = new L.FeatureGroup();
+      map.addLayer(drawnItems);
+
+      const drawControl = new L.Control.Draw({
+        draw: {
+          polygon: {
+            allowIntersection: false,
+            shapeOptions: { color: "blue" },
+          },
+          polyline: false,
+          rectangle: false,
+          circle: false,
+          marker: false,
+          circlemarker: false,
+        },
+        edit: { featureGroup: drawnItems },
+      });
+      map.addControl(drawControl);
+
+      let currentPolygon = null;
+
+      map.on(L.Draw.Event.CREATED, function (e) {
+        drawnItems.clearLayers();
+        currentPolygon = e.layer;
+        drawnItems.addLayer(currentPolygon);
+      });
+
+      function generatePoints() {
+        const points = [];
+
+        // 50 Points Region in Jakarta
+        for (let i = 0; i < 50; i++) {
+          points.push({
+            lat: parseFloat((Math.random() * (-6.1 + 6.25) - 6.25).toFixed(6)),
+            lng: parseFloat(
+              (Math.random() * (106.9 - 106.75) + 106.75).toFixed(6)
+            ),
+          });
+        }
+
+        // 50 Points outside from Jakarta region
+        for (let i = 0; i < 50; i++) {
+          points.push({
+            lat: parseFloat((Math.random() * (-6.3 + 7.0) - 7.0).toFixed(6)),
+            lng: parseFloat(
+              (Math.random() * (107.5 - 106.0) + 106.0).toFixed(6)
+            ),
+          });
+        }
+
+        return points;
+      }
+
+      function sendCheck() {
+        if (!currentPolygon) return alert("Please apply polygon marker");
+
+        const polygonCoords = currentPolygon
+          .getLatLngs()[0]
+          .map((p) => ({ lat: p.lat, lng: p.lng }));
+        const testPoints = generatePoints();
+
+        fetch("/api/check-multiple-points", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ polygonCoords, points: testPoints }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            const inCount = data.results.filter((p) => p.isInside).length;
+            const outCount = data.results.length - inCount;
+            document.getElementById("status").innerHTML = `
+            ✅ Points in polygon: ${inCount}<br>
+            ❌ Points Out polygon: ${outCount}
+          `;
+          })
+          .catch((err) => {
+            console.error(err);
+            document.getElementById("status").innerText = "❌ Failed to check.";
+          });
+      }
+    </script>
+  </body>
+</html>
